@@ -2,11 +2,13 @@ package main
 
 import (
 	"bufio"
+	"compress/gzip"
 	"errors"
 	"flag"
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 
 	sakurarslog2parquet "github.com/ophum/sakura-rs-log2parquet"
 )
@@ -22,7 +24,17 @@ func main() {
 	}
 	defer f.Close()
 
-	r := bufio.NewReader(f)
+	var fr io.ReadCloser = f
+	if filepath.Ext(logFile) == ".gz" {
+		fr, err = gzip.NewReader(f)
+		if err != nil {
+			panic(err)
+		}
+		fr.Close()
+
+	}
+
+	r := bufio.NewReader(fr)
 
 	logs := []*sakurarslog2parquet.AccessLog{}
 	for {
