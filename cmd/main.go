@@ -14,18 +14,44 @@ import (
 )
 
 func main() {
-	var logFile string
+	var logFile, outFile string
 	flag.StringVar(&logFile, "log", "access.log", "access log path")
+	flag.StringVar(&outFile, "out", "output.parquet", "output parquet path")
 	flag.Parse()
 
-	f, err := os.Open(logFile)
+	files, err := filepath.Glob("access_log*")
+	if err != nil {
+		panic(err)
+	}
+	log.Println(files)
+
+	accessLogs := []*sakurarslog2parquet.AccessLog{}
+	for _, path := range files {
+		log.Println("parse", path)
+		logs, err := parseFromFile(path)
+		if err != nil {
+			panic(err)
+		}
+		accessLogs = append(accessLogs, logs...)
+	}
+
+	if len(accessLogs) > 0 {
+		log.Println("write parquet")
+		if err := sakurarslog2parquet.WriteAccessLog(outFile, accessLogs); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func parseFromFile(path string) ([]*sakurarslog2parquet.AccessLog, error) {
+	f, err := os.Open(path)
 	if err != nil {
 		panic(err)
 	}
 	defer f.Close()
 
 	var fr io.ReadCloser = f
-	if filepath.Ext(logFile) == ".gz" {
+	if filepath.Ext(path) == ".gz" {
 		fr, err = gzip.NewReader(f)
 		if err != nil {
 			panic(err)
@@ -43,7 +69,7 @@ func main() {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			panic(err)
+			return nil, err
 		}
 
 		accessLog, err := sakurarslog2parquet.ParseAccessLog(string(l))
@@ -55,9 +81,5 @@ func main() {
 
 		logs = append(logs, accessLog)
 	}
-	if len(logs) > 0 {
-		if err := sakurarslog2parquet.WriteAccessLog(logFile+".parquet", logs); err != nil {
-			panic(err)
-		}
-	}
+	return logs, nil
 }
